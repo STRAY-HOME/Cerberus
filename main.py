@@ -31,35 +31,19 @@ def spinning_cursor(stop_event: threading.Event):
     sys.stdout.flush()
 
 
-
-class VulnerabilityDetector(ast.NodeVisitor):
-    def __init__(self):
-        self.findings = []
-
-    def visit_Call(self, node: ast.Call):
-        # Pass code to the Gemini API for analysis
-        code_snippet = ast.unparse(node)
-        response = client.interactions.create(
-            model=model_name,
-            input=(
-                f"{gemPrompt}\n{code_snippet}\n"
-                "----- END UNTRUSTED SOURCE CODE -----"
-            ),
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 1024,
-            },
-        )
-        if not response.output_text:
-            raise RuntimeError(
-                f"Gemini returned no analysis for the call at line {node.lineno}."
+def analyze_code(code_snippet):
+    response = client.interactions.create(
+                model=model_name,
+                input=(
+                    f"{gemPrompt}\n{code_snippet}\n"
+                    "----- END UNTRUSTED SOURCE CODE -----"
+                ),
+                generation_config={
+                    "temperature": 0.2,
+                    "max_output_tokens": 1024,
+                },
             )
-
-        self.findings.append(
-            (node.lineno, code_snippet, response.output_text)
-        )
-        self.generic_visit(node)
-
+    return response.text.strip()
 
 def read_code():
     findings = []
@@ -68,9 +52,6 @@ def read_code():
         if file_path.name != "main.py":
             with open(file_path, "r") as file:
                 code = file.read()
-                tree = ast.parse(code)
-                detector = VulnerabilityDetector()
-                detector.visit(tree)
                 findings.extend(
                     (file_path.name, lineno, code_snippet, analysis)
                     for lineno, code_snippet, analysis in detector.findings
